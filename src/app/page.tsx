@@ -1,69 +1,168 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useState, type KeyboardEvent } from "react";
+import PlacesMap from "@/components/PlacesMap";
+import type { Place } from "@/app/api/places/route";
+
+type Results = { city: string; thingsToDo: Place[]; food: Place[] };
+type Tab = "do" | "eat";
+
+const SUGGESTIONS = ["Tokyo", "Bangkok", "Seoul", "Bali", "Paris"];
 
 export default function Home() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Results | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("do");
+
+  async function search(city: string) {
+    const trimmed = city.trim();
+    if (!trimmed) return;
+    setQuery(trimmed);
+    setLoading(true);
+    setError(null);
+    window.history.replaceState(null, "", `?q=${encodeURIComponent(trimmed)}`);
+    try {
+      const res = await fetch(`/api/places?city=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
+      if (!data.thingsToDo.length && !data.food.length) {
+        throw new Error(`We couldn't find anything for "${trimmed}". Try another place.`);
+      }
+      setResults(data);
+      setTab("do");
+    } catch (err) {
+      setResults(null);
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (!q) return;
+    // Run after the first render so a shared ?q= link loads its results.
+    const timer = setTimeout(() => search(q), 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") search(query);
+  }
+
+  const places = results ? (tab === "do" ? results.thingsToDo : results.food) : [];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <main className="min-h-screen bg-stone-50 text-stone-900">
+      <section className="bg-gradient-to-br from-orange-500 to-rose-500 text-white">
+        <div className="mx-auto max-w-5xl px-5 py-14 sm:py-20">
+          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">Where are you going?</h1>
+          <p className="mt-3 text-lg text-white/90">
+            Type a place and get the best things to do and food to eat there.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+          <div className="mt-8 flex flex-col sm:flex-row gap-3">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Try Tokyo, Bali or Paris"
+              className="flex-1 rounded-xl px-5 py-4 text-lg text-stone-900 bg-white outline-none focus:ring-4 focus:ring-white/40"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <button
+              onClick={() => search(query)}
+              disabled={loading}
+              className="rounded-xl bg-stone-900 px-8 py-4 text-lg font-semibold hover:bg-stone-800 disabled:opacity-60"
+            >
+              {loading ? "Searching..." : "Search"}
+            </button>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => search(s)}
+                className="rounded-full bg-white/20 px-4 py-1.5 text-sm hover:bg-white/30"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
-      </main>
-    </div>
+      </section>
+
+      <div className="mx-auto max-w-5xl px-5 py-10">
+        {error && (
+          <p className="rounded-xl bg-rose-100 px-5 py-4 text-rose-800">{error}</p>
+        )}
+
+        {loading && (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-72 animate-pulse rounded-2xl bg-stone-200" />
+            ))}
+          </div>
+        )}
+
+        {results && !loading && (
+          <>
+            <h2 className="text-2xl font-bold">{results.city}</h2>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                onClick={() => setTab("do")}
+                className={`rounded-full px-5 py-2 font-medium ${tab === "do" ? "bg-stone-900 text-white" : "bg-white border border-stone-300"}`}
+              >
+                Things to do ({results.thingsToDo.length})
+              </button>
+              <button
+                onClick={() => setTab("eat")}
+                className={`rounded-full px-5 py-2 font-medium ${tab === "eat" ? "bg-stone-900 text-white" : "bg-white border border-stone-300"}`}
+              >
+                Food ({results.food.length})
+              </button>
+            </div>
+
+            <div className="mt-6">
+              <PlacesMap places={places} />
+            </div>
+
+            <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {places.map((p) => (
+                <a
+                  key={p.id}
+                  href={p.mapsUrl ?? "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200 hover:shadow-md transition"
+                >
+                  <div className="h-44 bg-stone-200">
+                    {p.photo && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.photo}
+                        alt={p.name}
+                        loading="lazy"
+                        className="h-full w-full object-cover group-hover:scale-105 transition"
+                      />
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold leading-snug">{p.name}</h3>
+                    {p.rating != null && (
+                      <p className="mt-1 text-sm text-stone-600">
+                        <span className="text-orange-500">&#9733;</span> {p.rating.toFixed(1)}{" "}
+                        <span className="text-stone-400">({p.reviews.toLocaleString()} reviews)</span>
+                      </p>
+                    )}
+                    <p className="mt-2 text-sm text-stone-500 line-clamp-2">{p.address}</p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </main>
   );
 }
