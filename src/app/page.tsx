@@ -3,6 +3,7 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import PlacesMap from "@/components/PlacesMap";
 import type { Place } from "@/app/api/places/route";
+import type { Guide } from "@/app/api/guide/route";
 
 type Results = { city: string; thingsToDo: Place[]; food: Place[] };
 type Tab = "do" | "eat";
@@ -12,9 +13,23 @@ const SUGGESTIONS = ["Tokyo", "Bangkok", "Seoul", "Bali", "Paris"];
 export default function Home() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Results | null>(null);
+  const [guide, setGuide] = useState<Guide | null>(null);
+  const [guideLoading, setGuideLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("do");
+
+  async function loadGuide(city: string) {
+    setGuideLoading(true);
+    try {
+      const res = await fetch(`/api/guide?city=${encodeURIComponent(city)}`);
+      if (res.ok) setGuide(await res.json());
+    } catch {
+      // The plain lists still work without the AI guide.
+    } finally {
+      setGuideLoading(false);
+    }
+  }
 
   async function search(city: string) {
     const trimmed = city.trim();
@@ -22,6 +37,7 @@ export default function Home() {
     setQuery(trimmed);
     setLoading(true);
     setError(null);
+    setGuide(null);
     window.history.replaceState(null, "", `?q=${encodeURIComponent(trimmed)}`);
     try {
       const res = await fetch(`/api/places?city=${encodeURIComponent(trimmed)}`);
@@ -32,6 +48,7 @@ export default function Home() {
       }
       setResults(data);
       setTab("do");
+      loadGuide(trimmed);
     } catch (err) {
       setResults(null);
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -52,7 +69,14 @@ export default function Home() {
     if (e.key === "Enter") search(query);
   }
 
-  const places = results ? (tab === "do" ? results.thingsToDo : results.food) : [];
+  const allPlaces = results ? (tab === "do" ? results.thingsToDo : results.food) : [];
+  const picks = guide ? (tab === "do" ? guide.topThingsToDo : guide.topFood) : [];
+  const whyById = new Map(picks.map((p) => [p.id, p.why]));
+  // AI top picks first, in the order the AI ranked them, then everything else.
+  const places = [
+    ...picks.map((pick) => allPlaces.find((p) => p.id === pick.id)).filter((p): p is Place => !!p),
+    ...allPlaces.filter((p) => !whyById.has(p.id)),
+  ];
 
   return (
     <main className="min-h-screen bg-stone-50 text-stone-900">
@@ -108,7 +132,35 @@ export default function Home() {
         {results && !loading && (
           <>
             <h2 className="text-2xl font-bold">{results.city}</h2>
-            <div className="mt-4 flex flex-wrap gap-2">
+
+            {guideLoading && (
+              <div className="mt-4 space-y-3">
+                <p className="text-sm text-stone-500">&#10024; Picking the highlights for you...</p>
+                <div className="h-4 w-3/4 animate-pulse rounded bg-stone-200" />
+                <div className="h-20 animate-pulse rounded-2xl bg-stone-200" />
+              </div>
+            )}
+
+            {guide && (
+              <>
+                <p className="mt-2 text-lg text-stone-700">{guide.intro}</p>
+                {guide.dishes.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-lg font-semibold">What to eat in {results.city}</h3>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {guide.dishes.map((d) => (
+                        <div key={d.name} className="rounded-xl bg-orange-50 px-4 py-3 ring-1 ring-orange-100">
+                          <p className="font-semibold">{d.name}</p>
+                          <p className="mt-1 text-sm text-stone-600">{d.why}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="mt-8 flex flex-wrap gap-2">
               <button
                 onClick={() => setTab("do")}
                 className={`rounded-full px-5 py-2 font-medium ${tab === "do" ? "bg-stone-900 text-white" : "bg-white border border-stone-300"}`}
@@ -128,41 +180,50 @@ export default function Home() {
             </div>
 
             <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {places.map((p) => (
-                <a
-                  key={p.id}
-                  href={p.mapsUrl ?? "#"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200 hover:shadow-md transition"
-                >
-                  <div className="h-44 bg-gradient-to-br from-orange-100 to-rose-100 flex items-center justify-center text-5xl">
-                    {!p.photo && <span aria-hidden>{tab === "do" ? "\u{1F5FA}\uFE0F" : "\u{1F35C}"}</span>}
-                    {p.photo && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.photo}
-                        alt={p.name}
-                        loading="lazy"
-                        className="h-full w-full object-cover group-hover:scale-105 transition"
-                      />
-                    )}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold leading-snug">{p.name}</h3>
-                    {p.rating != null && (
-                      <p className="mt-1 text-sm text-stone-600">
-                        <span className="text-orange-500">&#9733;</span> {p.rating.toFixed(1)}{" "}
-                        <span className="text-stone-400">({p.reviews.toLocaleString()} reviews)</span>
-                      </p>
-                    )}
-                    {p.summary && (
-                      <p className="mt-2 text-sm text-stone-700 line-clamp-3">{p.summary}</p>
-                    )}
-                    <p className="mt-2 text-sm text-stone-500 line-clamp-2">{p.address}</p>
-                  </div>
-                </a>
-              ))}
+              {places.map((p) => {
+                const why = whyById.get(p.id);
+                return (
+                  <a
+                    key={p.id}
+                    href={p.mapsUrl ?? "#"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`group overflow-hidden rounded-2xl bg-white shadow-sm ring-1 hover:shadow-md transition ${why ? "ring-orange-300" : "ring-stone-200"}`}
+                  >
+                    <div className="relative h-44 bg-gradient-to-br from-orange-100 to-rose-100 flex items-center justify-center text-5xl">
+                      {!p.photo && <span aria-hidden>{tab === "do" ? "\u{1F5FA}\uFE0F" : "\u{1F35C}"}</span>}
+                      {p.photo && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.photo}
+                          alt={p.name}
+                          loading="lazy"
+                          className="h-full w-full object-cover group-hover:scale-105 transition"
+                        />
+                      )}
+                      {why && (
+                        <span className="absolute left-3 top-3 rounded-full bg-orange-500 px-3 py-1 text-xs font-semibold text-white shadow">
+                          Top pick
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-semibold leading-snug">{p.name}</h3>
+                      {p.rating != null && (
+                        <p className="mt-1 text-sm text-stone-600">
+                          <span className="text-orange-500">&#9733;</span> {p.rating.toFixed(1)}{" "}
+                          <span className="text-stone-400">({p.reviews.toLocaleString()} reviews)</span>
+                        </p>
+                      )}
+                      {why && <p className="mt-2 text-sm font-medium text-orange-700">{why}</p>}
+                      {!why && p.summary && (
+                        <p className="mt-2 text-sm text-stone-700 line-clamp-3">{p.summary}</p>
+                      )}
+                      <p className="mt-2 text-sm text-stone-500 line-clamp-2">{p.address}</p>
+                    </div>
+                  </a>
+                );
+              })}
             </div>
           </>
         )}
