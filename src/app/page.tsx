@@ -136,7 +136,8 @@ export default function Home() {
                   rel="noopener noreferrer"
                   className="group overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200 hover:shadow-md transition"
                 >
-                  <div className="h-44 bg-stone-200">
+                  <div className="h-44 bg-gradient-to-br from-orange-100 to-rose-100 flex items-center justify-center text-5xl">
+                    {!p.photo && <span aria-hidden>{tab === "do" ? "\u{1F5FA}\uFE0F" : "\u{1F35C}"}</span>}
                     {p.photo && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -154,6 +155,9 @@ export default function Home() {
                         <span className="text-orange-500">&#9733;</span> {p.rating.toFixed(1)}{" "}
                         <span className="text-stone-400">({p.reviews.toLocaleString()} reviews)</span>
                       </p>
+                    )}
+                    {p.summary && (
+                      <p className="mt-2 text-sm text-stone-700 line-clamp-3">{p.summary}</p>
                     )}
                     <p className="mt-2 text-sm text-stone-500 line-clamp-2">{p.address}</p>
                   </div>
