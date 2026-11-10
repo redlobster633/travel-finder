@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import PlacesMap from "@/components/PlacesMap";
+import TikTokFoodVideos from "@/components/TikTokFoodVideos";
 import type { Place } from "@/app/api/places/route";
 import type { Guide } from "@/app/api/guide/route";
+import type { FoodVideo } from "@/app/api/videos/route";
 
 type Results = { city: string; thingsToDo: Place[]; food: Place[] };
 type Tab = "do" | "eat";
@@ -15,45 +17,70 @@ export default function Home() {
   const [results, setResults] = useState<Results | null>(null);
   const [guide, setGuide] = useState<Guide | null>(null);
   const [guideLoading, setGuideLoading] = useState(false);
+  const [videos, setVideos] = useState<FoodVideo[] | null>(null);
+  const [videosLoading, setVideosLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const searchId = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("do");
 
-  async function loadGuide(city: string) {
+  async function loadGuide(city: string, id: number) {
     setGuideLoading(true);
     try {
       const res = await fetch(`/api/guide?city=${encodeURIComponent(city)}`);
+      if (id !== searchId.current) return;
       if (res.ok) setGuide(await res.json());
     } catch {
       // The plain lists still work without the AI guide.
     } finally {
-      setGuideLoading(false);
+      if (id === searchId.current) setGuideLoading(false);
+    }
+  }
+
+  async function loadVideos(city: string, id: number) {
+    setVideosLoading(true);
+    try {
+      const res = await fetch(`/api/videos?city=${encodeURIComponent(city)}`);
+      if (id !== searchId.current) return;
+      if (!res.ok) return;
+      const data: { videos?: FoodVideo[] } = await res.json();
+      setVideos(Array.isArray(data.videos) ? data.videos : []);
+    } catch {
+      // Places and the guide still work without videos.
+    } finally {
+      if (id === searchId.current) setVideosLoading(false);
     }
   }
 
   async function search(city: string) {
     const trimmed = city.trim();
     if (!trimmed) return;
+    const id = ++searchId.current;
     setQuery(trimmed);
     setLoading(true);
     setError(null);
     setGuide(null);
+    setVideos(null);
+    setVideosLoading(false);
     window.history.replaceState(null, "", `?q=${encodeURIComponent(trimmed)}`);
     try {
       const res = await fetch(`/api/places?city=${encodeURIComponent(trimmed)}`);
       const data = await res.json();
+      if (id !== searchId.current) return;
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
       if (!data.thingsToDo.length && !data.food.length) {
         throw new Error(`We couldn't find anything for "${trimmed}". Try another place.`);
       }
       setResults(data);
       setTab("do");
-      loadGuide(trimmed);
+      loadGuide(trimmed, id);
+      loadVideos(trimmed, id);
     } catch (err) {
+      if (id !== searchId.current) return;
       setResults(null);
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
-      setLoading(false);
+      if (id === searchId.current) setLoading(false);
     }
   }
 
@@ -158,6 +185,17 @@ export default function Home() {
                   </div>
                 )}
               </>
+            )}
+
+            {videosLoading && (
+              <p className="mt-4 text-sm text-stone-500">&#10024; Finding food videos for you...</p>
+            )}
+
+            {videos && videos.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold">Food videos from TikTok</h3>
+                <TikTokFoodVideos videos={videos} />
+              </div>
             )}
 
             <div className="mt-8 flex flex-wrap gap-2">
