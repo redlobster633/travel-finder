@@ -1,6 +1,13 @@
 // Turns a YouTube Data API search response into cards the page can play.
 // Search results also include channels and playlists; only real videos stay.
 
+import {
+  EMPTY_PREFERENCES,
+  foodVideoQuery,
+  placesVideoQuery,
+  type Preferences,
+} from "./preferences";
+
 export type YouTubeVideo = {
   videoId: string;
   title: string;
@@ -13,10 +20,10 @@ export function isYouTubeVideoId(value: unknown): value is string {
   return typeof value === "string" && VIDEO_ID.test(value);
 }
 
-export function queriesForCity(city: string) {
+export function queriesForCity(city: string, prefs: Preferences = EMPTY_PREFERENCES) {
   return {
-    food: `${city} food recommendations`,
-    places: `${city} things to do`,
+    food: foodVideoQuery(city, prefs),
+    places: placesVideoQuery(city, prefs),
   };
 }
 

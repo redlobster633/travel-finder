@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { placesSearchText, preferencesFromSearchParams } from "@/lib/preferences";
 
 type GooglePlace = {
   id: string;
@@ -154,6 +155,8 @@ async function addMissingPhotos(places: Place[], useNearby = false): Promise<Pla
   return out;
 }
 // GET /api/places?city=Tokyo
+// Optional diet and interest params narrow the text search. With neither set,
+// the queries stay "top things to do" and "best local restaurants".
 export async function GET(request: NextRequest) {
   const city = request.nextUrl.searchParams.get("city")?.trim();
   if (!city) {
@@ -163,10 +166,11 @@ export async function GET(request: NextRequest) {
   if (!apiKey) {
     return NextResponse.json({ error: "GOOGLE_PLACES_API_KEY is not set." }, { status: 500 });
   }
+  const queries = placesSearchText(city, preferencesFromSearchParams(request.nextUrl.searchParams));
   try {
     const [thingsToDo, food] = await Promise.all([
-      searchPlaces(`top things to do in ${city}`, apiKey),
-      searchPlaces(`best local restaurants in ${city}`, apiKey),
+      searchPlaces(queries.thingsToDo, apiKey),
+      searchPlaces(queries.food, apiKey),
     ]);
     const [doWithPhotos, foodWithPhotos] = await Promise.all([
       addMissingPhotos(thingsToDo, true),

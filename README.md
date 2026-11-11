@@ -25,6 +25,12 @@ Set these in the host environment (for example Vercel). Do not commit values.
 - `AGENT_SEARCH_ENGINE_ID` (optional)
 - `YOUTUBE_API_KEY` (optional — food and places videos stay hidden when this is unset)
 
+## Preferences
+
+The search can include a diet and the kinds of things someone wants to do. Both are optional. Everyday diets (vegetarian, vegan, halal, kosher, gluten-free, dairy-free, nut-free) and a few activities (sports and cafe hopping, plus a few more) are chips. Anything else can be typed in.
+
+With nothing selected, a city search is the same as before. Choices are saved in the browser and added to the link, for example `?q=Tokyo&diet=vegan&interest=cafe-hopping`. The guide, place search, and video searches receive the same `diet` and `interest` values when those values apply to that search. Cached responses use the full URL, so a vegan Tokyo guide is stored separately from a generic one.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Place } from "@/app/api/places/route";
+import { apiPath, buildGuidePrompt, preferencesFromSearchParams, type GuideBrief } from "@/lib/preferences";
 
 // GET /api/guide?city=Tokyo
+// Optional &diet=vegan&interest=cafe-hopping. The full URL is the 3-day cache key,
+// so a vegan Tokyo guide is never reused for a generic Tokyo search.
 // Asks Gemini to turn the raw Google Places lists into a short curated guide.
 
 export type Pick = { id: string; why: string };
@@ -45,7 +48,7 @@ const SCHEMA = {
   required: ["intro", "dishes", "topThingsToDo", "topFood"],
 };
 
-function brief(places: Place[]) {
+function brief(places: Place[]): GuideBrief[] {
   return places.map((p) => ({
     id: p.id,
     name: p.name,
@@ -62,23 +65,15 @@ export async function GET(request: NextRequest) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "GEMINI_API_KEY is not set." }, { status: 500 });
 
+  const prefs = preferencesFromSearchParams(request.nextUrl.searchParams);
+
   try {
     // Reuse our own places endpoint so both pages see the same list.
-    const placesRes = await fetch(new URL(`/api/places?city=${encodeURIComponent(city)}`, request.url));
+    const placesRes = await fetch(new URL(apiPath("places", city, prefs), request.url));
     if (!placesRes.ok) throw new Error(`places ${placesRes.status}`);
     const places: { thingsToDo: Place[]; food: Place[] } = await placesRes.json();
 
-    const prompt = `You are a friendly local travel expert writing a short guide to ${city}.
-Below are popular attractions and restaurants from Google, with ratings and review counts.
-
-1. intro: one or two warm sentences on what makes ${city} special for a visitor.
-2. dishes: 6 local dishes or drinks a visitor must try in ${city}, each with one short line on why.
-3. topThingsToDo: pick the 8 best attractions from the list (balance famous sights with variety), each with one short, specific line on why it's worth it.
-4. topFood: pick the 8 best food spots from the list, each with one short line on what to order or why to go.
-Only use ids from the lists. Keep every "why" under 20 words.
-
-Attractions: ${JSON.stringify(brief(places.thingsToDo))}
-Restaurants: ${JSON.stringify(brief(places.food))}`;
+    const prompt = buildGuidePrompt(city, brief(places.thingsToDo), brief(places.food), prefs);
 
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,

@@ -115,15 +115,19 @@ function YouTubeCard({
 export default function YouTubeVideos({
   food,
   places,
+  foodTitle = "Food videos from YouTube",
+  placesTitle = "Things to do on YouTube",
 }: {
   food: YouTubeVideo[];
   places: YouTubeVideo[];
+  foodTitle?: string;
+  placesTitle?: string;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hiddenPosters, setHiddenPosters] = useState<string[]>([]);
   const sections = [
-    { id: "food", title: "Food videos from YouTube", videos: safeVideos(food) },
-    { id: "places", title: "Things to do on YouTube", videos: safeVideos(places) },
+    { id: "food", title: foodTitle, videos: safeVideos(food) },
+    { id: "places", title: placesTitle, videos: safeVideos(places) },
   ].filter((section) => section.videos.length > 0);
 
   if (sections.length === 0) return null;

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { preferencesFromSearchParams } from "@/lib/preferences";
 import {
   pickYouTubeVideos,
   queriesForCity,
@@ -7,6 +8,9 @@ import {
 } from "@/lib/youtube";
 
 // GET /api/youtube?city=Tokyo
+// Optional diet changes the food search. Optional interest changes things to do,
+// and food-related interests such as cafe hopping change the food search too.
+// The full URL is the 3-day cache key.
 // One search for food and one for things to do. Each search costs 100 units
 // of YouTube's free daily quota, so a full response is cached for 3 days
 // (same as /api/videos). Thumbnails are public i.ytimg.com links, built later
@@ -63,7 +67,7 @@ export async function GET(request: NextRequest) {
   // The key is optional. Hide YouTube and leave the rest of the page alone.
   if (!apiKey) return empty(city);
 
-  const queries = queriesForCity(city);
+  const queries = queriesForCity(city, preferencesFromSearchParams(request.nextUrl.searchParams));
   const [foodResult, placesResult] = await Promise.allSettled([
     searchYouTube(apiKey, queries.food),
     searchYouTube(apiKey, queries.places),
