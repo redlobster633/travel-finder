@@ -23,6 +23,7 @@ Set these in the host environment (for example Vercel). Do not commit values.
 - `AGENT_SEARCH_API_KEY`
 - `AGENT_SEARCH_PROJECT_ID` (optional)
 - `AGENT_SEARCH_ENGINE_ID` (optional)
+- `YOUTUBE_API_KEY` (optional — food and places videos stay hidden when this is unset)
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
