@@ -2,12 +2,26 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import PlacesMap from "@/components/PlacesMap";
+import PreferenceBar from "@/components/PreferenceBar";
 import TikTokFoodVideos from "@/components/TikTokFoodVideos";
 import YouTubeVideos from "@/components/YouTubeVideos";
 import type { Place } from "@/app/api/places/route";
 import type { Guide } from "@/app/api/guide/route";
 import type { FoodVideo } from "@/app/api/videos/route";
 import type { YouTubeVideo } from "@/app/api/youtube/route";
+import {
+  EMPTY_PREFERENCES,
+  apiPath,
+  foodVideoHeading,
+  hasPreferences,
+  pageSearch,
+  placesVideoHeading,
+  preferenceSummary,
+  preferencesFromSearchParams,
+  readStoredPreferences,
+  writeStoredPreferences,
+  type Preferences,
+} from "@/lib/preferences";
 
 type Results = { city: string; thingsToDo: Place[]; food: Place[] };
 type Tab = "do" | "eat";
@@ -24,14 +38,26 @@ export default function Home() {
   const [youTube, setYouTube] = useState<{ food: YouTubeVideo[]; places: YouTubeVideo[] } | null>(null);
   const [youTubeLoading, setYouTubeLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [preferences, setPreferences] = useState<Preferences>(EMPTY_PREFERENCES);
+  const [appliedPrefs, setAppliedPrefs] = useState<Preferences>(EMPTY_PREFERENCES);
   const searchId = useRef(0);
+  const searchedCity = useRef<string | null>(null);
+  const researchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefsTouched = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("do");
 
-  async function loadGuide(city: string, id: number) {
+  function clearResearchTimer() {
+    if (researchTimer.current) {
+      clearTimeout(researchTimer.current);
+      researchTimer.current = null;
+    }
+  }
+
+  async function loadGuide(city: string, id: number, prefs: Preferences) {
     setGuideLoading(true);
     try {
-      const res = await fetch(`/api/guide?city=${encodeURIComponent(city)}`);
+      const res = await fetch(apiPath("guide", city, prefs));
       if (id !== searchId.current) return;
       if (res.ok) setGuide(await res.json());
     } catch {
@@ -41,10 +67,10 @@ export default function Home() {
     }
   }
 
-  async function loadVideos(city: string, id: number) {
+  async function loadVideos(city: string, id: number, prefs: Preferences) {
     setVideosLoading(true);
     try {
-      const res = await fetch(`/api/videos?city=${encodeURIComponent(city)}`);
+      const res = await fetch(apiPath("videos", city, prefs));
       if (id !== searchId.current) return;
       if (!res.ok) return;
       const data: { videos?: FoodVideo[] } = await res.json();
@@ -56,10 +82,10 @@ export default function Home() {
     }
   }
 
-  async function loadYouTube(city: string, id: number) {
+  async function loadYouTube(city: string, id: number, prefs: Preferences) {
     setYouTubeLoading(true);
     try {
-      const res = await fetch(`/api/youtube?city=${encodeURIComponent(city)}`);
+      const res = await fetch(apiPath("youtube", city, prefs));
       if (id !== searchId.current) return;
       if (!res.ok) return;
       const data: { food?: YouTubeVideo[]; places?: YouTubeVideo[] } = await res.json();
@@ -74,11 +100,14 @@ export default function Home() {
     }
   }
 
-  async function search(city: string) {
+  async function search(city: string, prefs: Preferences) {
     const trimmed = city.trim();
     if (!trimmed) return;
+    clearResearchTimer();
     const id = ++searchId.current;
+    searchedCity.current = trimmed;
     setQuery(trimmed);
+    setAppliedPrefs(prefs);
     setLoading(true);
     setError(null);
     setGuide(null);
@@ -86,9 +115,9 @@ export default function Home() {
     setVideosLoading(false);
     setYouTube(null);
     setYouTubeLoading(false);
-    window.history.replaceState(null, "", `?q=${encodeURIComponent(trimmed)}`);
+    window.history.replaceState(null, "", pageSearch(trimmed, prefs));
     try {
-      const res = await fetch(`/api/places?city=${encodeURIComponent(trimmed)}`);
+      const res = await fetch(apiPath("places", trimmed, prefs));
       const data = await res.json();
       if (id !== searchId.current) return;
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
@@ -97,9 +126,9 @@ export default function Home() {
       }
       setResults(data);
       setTab("do");
-      loadGuide(trimmed, id);
-      loadVideos(trimmed, id);
-      loadYouTube(trimmed, id);
+      loadGuide(trimmed, id, prefs);
+      loadVideos(trimmed, id, prefs);
+      loadYouTube(trimmed, id, prefs);
     } catch (err) {
       if (id !== searchId.current) return;
       setResults(null);
@@ -110,15 +139,39 @@ export default function Home() {
   }
 
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search).get("q");
-    if (!q) return;
-    // Run after the first render so a shared ?q= link loads its results.
-    const timer = setTimeout(() => search(q), 0);
+    const params = new URLSearchParams(window.location.search);
+    const urlHasPrefs = params.has("diet") || params.has("interest");
+    // A shared link with diet or interest wins. Otherwise reuse what this browser saved.
+    const prefs = urlHasPrefs ? preferencesFromSearchParams(params) : readStoredPreferences();
+    if (urlHasPrefs) writeStoredPreferences(prefs);
+    const q = params.get("q");
+    // Apply saved chips after the first paint. Reading localStorage during render
+    // would disagree with the server HTML. Skip this if a search already started.
+    const timer = setTimeout(() => {
+      if (prefsTouched.current || searchedCity.current) return;
+      setPreferences(prefs);
+      if (q) search(q, prefs);
+    }, 0);
     return () => clearTimeout(timer);
+    // search reads prefs from this effect, not from later renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => clearResearchTimer, []);
+
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") search(query);
+    if (e.key === "Enter") search(query, preferences);
+  }
+
+  function onPreferencesChange(next: Preferences) {
+    prefsTouched.current = true;
+    setPreferences(next);
+    writeStoredPreferences(next);
+    const city = searchedCity.current;
+    if (!city) return;
+    window.history.replaceState(null, "", pageSearch(city, next));
+    clearResearchTimer();
+    researchTimer.current = setTimeout(() => search(city, next), 450);
   }
 
   const allPlaces = results ? (tab === "do" ? results.thingsToDo : results.food) : [];
@@ -147,7 +200,7 @@ export default function Home() {
               className="flex-1 rounded-xl px-5 py-4 text-lg text-stone-900 bg-white outline-none focus:ring-4 focus:ring-white/40"
             />
             <button
-              onClick={() => search(query)}
+              onClick={() => search(query, preferences)}
               disabled={loading}
               className="rounded-xl bg-stone-900 px-8 py-4 text-lg font-semibold hover:bg-stone-800 disabled:opacity-60"
             >
@@ -158,19 +211,25 @@ export default function Home() {
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
-                onClick={() => search(s)}
+                onClick={() => search(s, preferences)}
                 className="rounded-full bg-white/20 px-4 py-1.5 text-sm hover:bg-white/30"
               >
                 {s}
               </button>
             ))}
           </div>
+          <PreferenceBar value={preferences} onChange={onPreferencesChange} />
         </div>
       </section>
 
       <div className="mx-auto max-w-5xl px-5 py-10">
         {error && (
-          <p className="rounded-xl bg-rose-100 px-5 py-4 text-rose-800">{error}</p>
+          <div>
+            <p className="rounded-xl bg-rose-100 px-5 py-4 text-rose-800">{error}</p>
+            {hasPreferences(appliedPrefs) && (
+              <p className="mt-2 text-sm text-stone-600">Searched for {preferenceSummary(appliedPrefs)}.</p>
+            )}
+          </div>
         )}
 
         {loading && (
@@ -184,6 +243,9 @@ export default function Home() {
         {results && !loading && (
           <>
             <h2 className="text-2xl font-bold">{results.city}</h2>
+            {hasPreferences(appliedPrefs) && (
+              <p className="mt-1 text-sm text-stone-600">For {preferenceSummary(appliedPrefs)}</p>
+            )}
 
             {guideLoading && (
               <div className="mt-4 space-y-3">
@@ -218,7 +280,7 @@ export default function Home() {
 
             {videos && videos.length > 0 && (
               <div className="mt-6">
-                <h3 className="text-lg font-semibold">Food videos from TikTok</h3>
+                <h3 className="text-lg font-semibold">{foodVideoHeading("TikTok", appliedPrefs)}</h3>
                 <TikTokFoodVideos videos={videos} />
               </div>
             )}
@@ -227,7 +289,14 @@ export default function Home() {
               <p className="mt-4 text-sm text-stone-500">&#10024; Finding YouTube videos for you...</p>
             )}
 
-            {youTube && <YouTubeVideos food={youTube.food} places={youTube.places} />}
+            {youTube && (
+              <YouTubeVideos
+                food={youTube.food}
+                places={youTube.places}
+                foodTitle={foodVideoHeading("YouTube", appliedPrefs)}
+                placesTitle={placesVideoHeading(appliedPrefs)}
+              />
+            )}
 
             <div className="mt-8 flex flex-wrap gap-2">
               <button

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pickTikTokVideos, type FoodVideo, type VideoSearchHit } from "@/lib/food-videos";
+import { foodVideoQuery, preferencesFromSearchParams } from "@/lib/preferences";
 
 // GET /api/videos?city=Tokyo
+// Optional diet, and food-related interests such as cafe hopping.
+// Sports is ignored here so that row can keep the generic cached search.
 // Food videos from TikTok via Google Agent Search (Discovery Engine searchLite).
 
 export type { FoodVideo };
@@ -32,7 +35,7 @@ function redact(message: string, secret: string) {
 async function searchLite(
   apiKey: string,
   config: string,
-  city: string,
+  query: string,
   pageToken: string
 ): Promise<SearchResponse> {
   const endpoint = `https://discoveryengine.googleapis.com/v1/${config}:searchLite?key=${encodeURIComponent(apiKey)}`;
@@ -42,7 +45,7 @@ async function searchLite(
     cache: "no-store",
     body: JSON.stringify({
       servingConfig: config,
-      query: `${city} food recommendations`,
+      query,
       pageSize: PAGE_SIZE,
       userPseudoId: USER_PSEUDO_ID,
       contentSearchSpec: { snippetSpec: { returnSnippet: true } },
@@ -68,6 +71,7 @@ export async function GET(request: NextRequest) {
   const projectId = process.env.AGENT_SEARCH_PROJECT_ID?.trim() || DEFAULT_PROJECT_ID;
   const engineId = process.env.AGENT_SEARCH_ENGINE_ID?.trim() || DEFAULT_ENGINE_ID;
   const config = servingConfig(projectId, engineId);
+  const query = foodVideoQuery(city, preferencesFromSearchParams(request.nextUrl.searchParams));
 
   const videos: FoodVideo[] = [];
   const seen = new Set<string>();
@@ -76,7 +80,7 @@ export async function GET(request: NextRequest) {
 
   try {
     for (let page = 0; page < MAX_PAGES && videos.length < MAX_VIDEOS; page++) {
-      const data = await searchLite(apiKey, config, city, pageToken);
+      const data = await searchLite(apiKey, config, query, pageToken);
       sawSuccess = true;
       for (const video of pickTikTokVideos(data.results, MAX_VIDEOS)) {
         if (seen.has(video.videoId)) continue;
