@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import PlacesMap from "@/components/PlacesMap";
 import TikTokFoodVideos from "@/components/TikTokFoodVideos";
+import YouTubeVideos from "@/components/YouTubeVideos";
 import type { Place } from "@/app/api/places/route";
 import type { Guide } from "@/app/api/guide/route";
 import type { FoodVideo } from "@/app/api/videos/route";
+import type { YouTubeVideo } from "@/app/api/youtube/route";
 
 type Results = { city: string; thingsToDo: Place[]; food: Place[] };
 type Tab = "do" | "eat";
@@ -19,6 +21,8 @@ export default function Home() {
   const [guideLoading, setGuideLoading] = useState(false);
   const [videos, setVideos] = useState<FoodVideo[] | null>(null);
   const [videosLoading, setVideosLoading] = useState(false);
+  const [youTube, setYouTube] = useState<{ food: YouTubeVideo[]; places: YouTubeVideo[] } | null>(null);
+  const [youTubeLoading, setYouTubeLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const searchId = useRef(0);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +56,24 @@ export default function Home() {
     }
   }
 
+  async function loadYouTube(city: string, id: number) {
+    setYouTubeLoading(true);
+    try {
+      const res = await fetch(`/api/youtube?city=${encodeURIComponent(city)}`);
+      if (id !== searchId.current) return;
+      if (!res.ok) return;
+      const data: { food?: YouTubeVideo[]; places?: YouTubeVideo[] } = await res.json();
+      setYouTube({
+        food: Array.isArray(data.food) ? data.food : [],
+        places: Array.isArray(data.places) ? data.places : [],
+      });
+    } catch {
+      // Places, the guide, and TikTok still work without YouTube.
+    } finally {
+      if (id === searchId.current) setYouTubeLoading(false);
+    }
+  }
+
   async function search(city: string) {
     const trimmed = city.trim();
     if (!trimmed) return;
@@ -62,6 +84,8 @@ export default function Home() {
     setGuide(null);
     setVideos(null);
     setVideosLoading(false);
+    setYouTube(null);
+    setYouTubeLoading(false);
     window.history.replaceState(null, "", `?q=${encodeURIComponent(trimmed)}`);
     try {
       const res = await fetch(`/api/places?city=${encodeURIComponent(trimmed)}`);
@@ -75,6 +99,7 @@ export default function Home() {
       setTab("do");
       loadGuide(trimmed, id);
       loadVideos(trimmed, id);
+      loadYouTube(trimmed, id);
     } catch (err) {
       if (id !== searchId.current) return;
       setResults(null);
@@ -197,6 +222,12 @@ export default function Home() {
                 <TikTokFoodVideos videos={videos} />
               </div>
             )}
+
+            {youTubeLoading && (
+              <p className="mt-4 text-sm text-stone-500">&#10024; Finding YouTube videos for you...</p>
+            )}
+
+            {youTube && <YouTubeVideos food={youTube.food} places={youTube.places} />}
 
             <div className="mt-8 flex flex-wrap gap-2">
               <button
