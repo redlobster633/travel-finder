@@ -42,7 +42,7 @@ export type GuideBrief = {
   summary: string | null;
 };
 
-export type ApiName = "guide" | "places" | "videos" | "youtube";
+export type ApiName = "guide" | "places" | "videos" | "youtube" | "web";
 
 const PRESETS: Record<PreferenceKind, readonly { id: string; label: string }[]> = {
   diet: DIET_PRESETS,
@@ -241,6 +241,45 @@ export function foodVideoQuery(city: string, prefs: Preferences): string {
   ];
   if (!words.length) return `${city} food recommendations`;
   return `${city} ${words.join(" ")} food recommendations`;
+}
+
+// One web search covers both food and things to do. With nothing selected, the
+// wording stays generic so the cached ?city= response can be reused.
+export function webArticleQuery(city: string, prefs: Preferences): string {
+  const normalized = normalizePreferences(prefs);
+  if (!hasPreferences(normalized)) return `best things to do and where to eat in ${city}`;
+
+  const food = [
+    ...normalized.diets.map((id) => phrase("diet", id)),
+    ...normalized.interests.filter(isFoodInterest).map((id) => phrase("interest", id)),
+  ];
+  const activities = normalized.interests.filter((id) => !isFoodInterest(id)).map((id) => phrase("interest", id));
+
+  if (!food.length) return `best ${activities.join(" ")} and where to eat in ${city}`;
+  if (!activities.length) return `best ${food.join(" ")} food and things to do in ${city}`;
+  return `best ${food.join(" ")} food and ${activities.join(" ")} in ${city}`;
+}
+
+// Extra Gemini rules for the web picks. Empty when the visitor set nothing,
+// so the plain city prompt stays stable.
+export function webPickNotes(prefs: Preferences): string {
+  const normalized = normalizePreferences(prefs);
+  if (!hasPreferences(normalized)) return "";
+
+  const diets = normalized.diets.map((id) => preferenceLabel("diet", id));
+  const interests = normalized.interests.map((id) => preferenceLabel("interest", id));
+  const notes: string[] = [];
+  if (diets.length) {
+    notes.push(
+      `Dietary restrictions (every food pick must fit all of them): ${humanList(diets)}. Skip any food that conflicts, even if it is famous, and say how the pick fits.`
+    );
+  }
+  if (interests.length) {
+    notes.push(
+      `Interests to lean toward: ${humanList(interests)}. Prefer matching things to do. Prefer matching food when an interest is about food or cafes, such as cafe hopping.`
+    );
+  }
+  return notes.join("\n");
 }
 
 export function placesVideoQuery(city: string, prefs: Preferences): string {
