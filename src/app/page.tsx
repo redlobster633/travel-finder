@@ -4,10 +4,12 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import PlacesMap from "@/components/PlacesMap";
 import PreferenceBar from "@/components/PreferenceBar";
 import TikTokFoodVideos from "@/components/TikTokFoodVideos";
+import WebPicks from "@/components/WebPicks";
 import YouTubeVideos from "@/components/YouTubeVideos";
 import type { Place } from "@/app/api/places/route";
 import type { Guide } from "@/app/api/guide/route";
 import type { FoodVideo } from "@/app/api/videos/route";
+import type { WebPick } from "@/app/api/web/route";
 import type { YouTubeVideo } from "@/app/api/youtube/route";
 import {
   EMPTY_PREFERENCES,
@@ -37,6 +39,8 @@ export default function Home() {
   const [videosLoading, setVideosLoading] = useState(false);
   const [youTube, setYouTube] = useState<{ food: YouTubeVideo[]; places: YouTubeVideo[] } | null>(null);
   const [youTubeLoading, setYouTubeLoading] = useState(false);
+  const [webPicks, setWebPicks] = useState<WebPick[] | null>(null);
+  const [webLoading, setWebLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(EMPTY_PREFERENCES);
   const [appliedPrefs, setAppliedPrefs] = useState<Preferences>(EMPTY_PREFERENCES);
@@ -82,6 +86,21 @@ export default function Home() {
     }
   }
 
+  async function loadWeb(city: string, id: number, prefs: Preferences) {
+    setWebLoading(true);
+    try {
+      const res = await fetch(apiPath("web", city, prefs));
+      if (id !== searchId.current) return;
+      if (!res.ok) return;
+      const data: { picks?: WebPick[] } = await res.json();
+      setWebPicks(Array.isArray(data.picks) ? data.picks : []);
+    } catch {
+      // Places, the guide, and the videos still work without articles.
+    } finally {
+      if (id === searchId.current) setWebLoading(false);
+    }
+  }
+
   async function loadYouTube(city: string, id: number, prefs: Preferences) {
     setYouTubeLoading(true);
     try {
@@ -115,6 +134,8 @@ export default function Home() {
     setVideosLoading(false);
     setYouTube(null);
     setYouTubeLoading(false);
+    setWebPicks(null);
+    setWebLoading(false);
     window.history.replaceState(null, "", pageSearch(trimmed, prefs));
     try {
       const res = await fetch(apiPath("places", trimmed, prefs));
@@ -129,6 +150,7 @@ export default function Home() {
       loadGuide(trimmed, id, prefs);
       loadVideos(trimmed, id, prefs);
       loadYouTube(trimmed, id, prefs);
+      loadWeb(trimmed, id, prefs);
     } catch (err) {
       if (id !== searchId.current) return;
       setResults(null);
@@ -297,6 +319,12 @@ export default function Home() {
                 placesTitle={placesVideoHeading(appliedPrefs)}
               />
             )}
+
+            {webLoading && (
+              <p className="mt-4 text-sm text-stone-500">&#10024; Finding articles from around the web...</p>
+            )}
+
+            {webPicks && webPicks.length > 0 && <WebPicks picks={webPicks} />}
 
             <div className="mt-8 flex flex-wrap gap-2">
               <button

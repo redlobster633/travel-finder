@@ -10,6 +10,8 @@ import {
   foodVideoHeading,
   foodVideoQuery,
   pageSearch,
+  webArticleQuery,
+  webPickNotes,
   parseStoredPreferences,
   placesSearchText,
   placesVideoHeading,
@@ -37,6 +39,9 @@ test("no preferences keep the original request paths and search text", () => {
   assert.equal(apiPath("places", TOKYO, EMPTY_PREFERENCES), "/api/places?city=Tokyo");
   assert.equal(apiPath("videos", TOKYO, EMPTY_PREFERENCES), "/api/videos?city=Tokyo");
   assert.equal(apiPath("youtube", TOKYO, EMPTY_PREFERENCES), "/api/youtube?city=Tokyo");
+  assert.equal(apiPath("web", TOKYO, EMPTY_PREFERENCES), "/api/web?city=Tokyo");
+  assert.equal(webArticleQuery(TOKYO, EMPTY_PREFERENCES), "best things to do and where to eat in Tokyo");
+  assert.equal(webPickNotes(EMPTY_PREFERENCES), "");
   assert.deepEqual(placesSearchText(TOKYO, EMPTY_PREFERENCES), {
     thingsToDo: "top things to do in Tokyo",
     food: "best local restaurants in Tokyo",
@@ -140,6 +145,14 @@ test("diet plus activities shape each request only where that preference applies
     apiPath("youtube", TOKYO, prefs),
     "/api/youtube?city=Tokyo&diet=gluten-free&diet=vegan&interest=cafe-hopping&interest=sports"
   );
+  assert.equal(
+    apiPath("web", TOKYO, prefs),
+    "/api/web?city=Tokyo&diet=gluten-free&diet=vegan&interest=cafe-hopping&interest=sports"
+  );
+  assert.equal(webArticleQuery(TOKYO, prefs), "best gluten-free vegan cafe hopping food and sports in Tokyo");
+  const notes = webPickNotes(prefs);
+  assert.match(notes, /Dietary restrictions \(every food pick must fit all of them\): Gluten-free and Vegan/);
+  assert.match(notes, /Interests to lean toward: Cafe hopping and Sports/);
   assert.deepEqual(placesSearchText(TOKYO, prefs), {
     thingsToDo: "top things to do in Tokyo for cafe hopping and sports",
     food: "best gluten-free and vegan cafes in Tokyo",
